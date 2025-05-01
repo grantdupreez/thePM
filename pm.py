@@ -1,5 +1,4 @@
 import streamlit as st
-import anthropic
 import hmac
 import PyPDF2
 import io
@@ -370,7 +369,6 @@ def display_projects():
                     st.success(f"Project '{project_name}' created successfully!")
                     st.rerun()
     
-    # Rest of display_projects function continues as before...
     # Project list
     st.subheader("Your Projects")
     
@@ -445,176 +443,205 @@ def display_projects():
                         st.success("Project updated successfully!")
                         st.rerun()
                 
-                # Continue with the rest of the tabs and functionality as in your original code...
-
-def display_documents():
-    """Display the documents view for managing project documents"""
-    st.title("Project Documents")
-    
-    # Initialize documents list if not exists
-    if "documents" not in st.session_state:
-        st.session_state.documents = []
-    
-    # Document upload form
-    st.subheader("Upload Document")
-    
-    upload_col1, upload_col2 = st.columns([3, 1])
-    with upload_col1:
-        uploaded_file = st.file_uploader("Choose a file", type=["pdf", "docx", "txt", "csv", "xlsx"])
-    with upload_col2:
-        if uploaded_file is not None:
-            document_type = st.selectbox(
-                "Document Type",
-                options=["Requirements", "Plan", "Report", "Meeting Minutes", "Other"]
-            )
-    
-    if uploaded_file is not None:
-        st.write("File details:")
-        file_details = {
-            "Filename": uploaded_file.name,
-            "File size": f"{uploaded_file.size / 1024:.2f} KB",
-            "Type": uploaded_file.type
-        }
-        
-        for key, value in file_details.items():
-            st.write(f"**{key}:** {value}")
-        
-        # Associate with project
-        project_names = ["None"] + [p["name"] for p in st.session_state.projects]
-        associated_project = st.selectbox("Associate with Project", options=project_names)
-        
-        document_description = st.text_area("Document Description (optional)")
-        
-        if st.button("Save Document"):
-            # Extract text if PDF
-            content = ""
-            if uploaded_file.type == "application/pdf":
-                content = extract_text_from_pdf(uploaded_file)
-            
-            # Save document
-            document = {
-                "id": len(st.session_state.documents) + 1,
-                "name": uploaded_file.name,
-                "type": document_type,
-                "description": document_description,
-                "associated_project": None if associated_project == "None" else associated_project,
-                "upload_date": datetime.datetime.now().isoformat(),
-                "content": content,
-                "size": uploaded_file.size,
-                "file_type": uploaded_file.type
-            }
-            
-            st.session_state.documents.append(document)
-            st.success(f"Document '{uploaded_file.name}' saved successfully!")
-            st.session_state.canvas_text = content  # Add content to canvas for AI processing
-            st.rerun()
-    
-    # Document library
-    st.subheader("Document Library")
-    
-    if not st.session_state.documents:
-        st.info("No documents uploaded yet.")
-    else:
-        # Filter options
-        col1, col2 = st.columns(2)
-        with col1:
-            filter_type = st.multiselect(
-                "Filter by Type",
-                options=["Requirements", "Plan", "Report", "Meeting Minutes", "Other"],
-                default=[]
-            )
-        with col2:
-            filter_project = st.multiselect(
-                "Filter by Project",
-                options=["None"] + [p["name"] for p in st.session_state.projects],
-                default=[]
-            )
-        
-        # Apply filters
-        filtered_docs = st.session_state.documents
-        if filter_type:
-            filtered_docs = [d for d in filtered_docs if d["type"] in filter_type]
-        if filter_project:
-            project_filter = ["None" if p == "None" else p for p in filter_project]
-            filtered_docs = [d for d in filtered_docs if d["associated_project"] in project_filter]
-        
-        # Display documents
-        for doc in filtered_docs:
-            with st.expander(f"{doc['name']} ({doc['type']})"):
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.write(f"**Type:** {doc['type']}")
-                    st.write(f"**Description:** {doc['description'] if doc['description'] else 'No description'}")
-                    st.write(f"**Upload Date:** {doc['upload_date'].split('T')[0]}")
-                with col2:
-                    st.write(f"**Project:** {doc['associated_project'] if doc['associated_project'] else 'None'}")
-                    st.write(f"**Size:** {doc['size'] / 1024:.2f} KB")
-                    if doc['content']:
-                        if st.button("View Content", key=f"view_{doc['id']}"):
-                            st.session_state.canvas_text = doc['content']
-                            st.session_state.current_view = "AI Assistant"
-                            st.rerun()
+                with tab2:
+                    st.subheader("Milestones")
+                    if not project.get("milestones"):
+                        st.info("No milestones for this project.")
+                    else:
+                        # Display existing milestones
+                        for midx, milestone in enumerate(project["milestones"]):
+                            cols = st.columns([3, 2, 2, 1])
+                            with cols[0]:
+                                st.write(milestone["name"])
+                            with cols[1]:
+                                st.write(milestone["date"])
+                            with cols[2]:
+                                status = st.selectbox(
+                                    "Status",
+                                    options=["Pending", "In Progress", "Completed", "Delayed"],
+                                    index=["Pending", "In Progress", "Completed", "Delayed"].index(milestone["status"]),
+                                    key=f"ms_status_{idx}_{midx}"
+                                )
+                            with cols[3]:
+                                update = st.button("✓", key=f"ms_update_{idx}_{midx}")
+                                
+                            if update:
+                                project["milestones"][midx]["status"] = status
+                                project["last_updated"] = datetime.datetime.now().isoformat()
+                                st.success("Milestone updated!")
+                                st.rerun()
+                    
+                    # Add new milestone
+                    st.subheader("Add Milestone")
+                    with st.form(key=f"add_milestone_{idx}"):
+                        ms_name = st.text_input("Milestone Name", key=f"ms_name_{idx}")
+                        ms_date = st.date_input("Date", key=f"ms_date_{idx}")
+                        ms_status = st.selectbox(
+                            "Status",
+                            options=["Pending", "In Progress", "Completed", "Delayed"],
+                            index=0,
+                            key=f"ms_status_new_{idx}"
+                        )
+                        submitted = st.form_submit_button("Add Milestone")
+                        
+                        if submitted:
+                            if not ms_name:
+                                st.error("Milestone name is required")
+                            else:
+                                if "milestones" not in project:
+                                    project["milestones"] = []
+                                
+                                project["milestones"].append({
+                                    "name": ms_name,
+                                    "date": ms_date.isoformat(),
+                                    "status": ms_status
+                                })
+                                project["last_updated"] = datetime.datetime.now().isoformat()
+                                st.success("Milestone added!")
+                                st.rerun()
                 
-                # Delete document
-                if st.button("Delete Document", key=f"delete_{doc['id']}"):
-                    st.session_state.documents.remove(doc)
-                    st.success(f"Document '{doc['name']}' deleted successfully!")
-                    st.rerun()
-
-def display_ai_assistant():
-    """Display the AI Assistant view for project management assistance"""
-    st.title("Project Management AI Assistant")
-    
-    # Initialize Anthropic client only if we need it
-    try:
-        client = anthropic.Anthropic(
-            api_key=st.secrets["ANTHROPIC_API_KEY"],
-        )
-    except Exception as e:
-        st.error(f"Error initializing AI client: {str(e)}")
-        st.warning("AI Assistant functionality is not available. Please check your API key configuration.")
-        return
-    
-    # System prompt for project management focus
-    if "ai_system_prompt" not in st.session_state:
-        st.session_state.ai_system_prompt = """You are a project management assistant that helps with all aspects of project management. 
-        Your role is to provide guidance, templates, and suggestions for each phase of the project lifecycle:
-        1. Project Initiation (e.g., creating project charters, stakeholder analysis)
-        2. Project Planning (e.g., creating WBS, schedules, risk assessments)
-        3. Project Execution (e.g., status reports, team coordination)
-        4. Project Monitoring (e.g., performance tracking, issue resolution)
-        5. Project Closure (e.g., lessons learned, completion reports)
-        
-        Provide practical, actionable advice. You can generate templates, plans, and reports based on the information provided.
-        Always consider best practices from PMI and PRINCE2 methodologies when applicable.
-        """
-    
-    # Rest of the AI assistant code continues as before...
-
-def main():
-    """Main function to run the app"""
-    # Initialize session state if needed
-    init_session_state()
-    
-    # Check password - if not authenticated, stop here
-    if not check_password():
-        return
-    
-    # Create sidebar
-    create_sidebar()
-    
-    # Display the appropriate view
-    if st.session_state.current_view == "Dashboard":
-        display_dashboard()
-    elif st.session_state.current_view == "Projects":
-        display_projects()
-    elif st.session_state.current_view == "Documents":
-        display_documents()
-    elif st.session_state.current_view == "AI Assistant":
-        display_ai_assistant()
-    else:
-        display_dashboard()
-
-# Run the main function
-if __name__ == "__main__":
-    main()
+                with tab3:
+                    st.subheader("Tasks")
+                    
+                    # Display task timeline if tasks exist
+                    if project.get("tasks"):
+                        timeline_data = {
+                            "events": []
+                        }
+                        
+                        for task in project["tasks"]:
+                            task_item = {
+                                "start_date": {
+                                    "year": task["start_date"].split("-")[0],
+                                    "month": task["start_date"].split("-")[1],
+                                    "day": task["start_date"].split("-")[2]
+                                },
+                                "end_date": {
+                                    "year": task["end_date"].split("-")[0],
+                                    "month": task["end_date"].split("-")[1],
+                                    "day": task["end_date"].split("-")[2]
+                                },
+                                "text": {
+                                    "headline": task["name"],
+                                    "text": f"Assigned to: {task['assignee']}<br>Status: {task['status']}"
+                                },
+                                "group": task["status"]
+                            }
+                            timeline_data["events"].append(task_item)
+                        
+                        if timeline_data["events"]:
+                            timeline(timeline_data, height=400)
+                    
+                    # Display existing tasks
+                    if not project.get("tasks"):
+                        st.info("No tasks for this project.")
+                    else:
+                        for tidx, task in enumerate(project["tasks"]):
+                            with st.expander(f"{task['name']} - {task['status']}"):
+                                col1, col2 = st.columns(2)
+                                with col1:
+                                    st.write(f"**Description:** {task['description']}")
+                                    st.write(f"**Assignee:** {task['assignee']}")
+                                with col2:
+                                    st.write(f"**Start Date:** {task['start_date']}")
+                                    st.write(f"**End Date:** {task['end_date']}")
+                                    st.write(f"**Status:** {task['status']}")
+                                
+                                # Update task
+                                new_task_status = st.selectbox(
+                                    "Update Status",
+                                    options=["Not Started", "In Progress", "Completed", "Blocked"],
+                                    index=["Not Started", "In Progress", "Completed", "Blocked"].index(task["status"]),
+                                    key=f"task_status_{idx}_{tidx}"
+                                )
+                                if st.button("Update Status", key=f"task_update_{idx}_{tidx}"):
+                                    project["tasks"][tidx]["status"] = new_task_status
+                                    project["last_updated"] = datetime.datetime.now().isoformat()
+                                    st.success("Task updated!")
+                                    st.rerun()
+                    
+                    # Add new task
+                    st.subheader("Add Task")
+                    with st.form(key=f"add_task_{idx}"):
+                        task_name = st.text_input("Task Name", key=f"task_name_{idx}")
+                        task_desc = st.text_area("Description", key=f"task_desc_{idx}")
+                        task_assignee = st.text_input("Assignee", key=f"task_assignee_{idx}")
+                        
+                        col1, col2 = st.columns(2)
+                        with col1:
+                            task_start = st.date_input("Start Date", key=f"task_start_{idx}")
+                        with col2:
+                            task_end = st.date_input("End Date", key=f"task_end_{idx}")
+                        
+                        task_status = st.selectbox(
+                            "Status",
+                            options=["Not Started", "In Progress", "Completed", "Blocked"],
+                            index=0,
+                            key=f"task_status_new_{idx}"
+                        )
+                        submitted = st.form_submit_button("Add Task")
+                        
+                        if submitted:
+                            if not task_name:
+                                st.error("Task name is required")
+                            else:
+                                if "tasks" not in project:
+                                    project["tasks"] = []
+                                
+                                project["tasks"].append({
+                                    "name": task_name,
+                                    "description": task_desc,
+                                    "assignee": task_assignee,
+                                    "start_date": task_start.isoformat(),
+                                    "end_date": task_end.isoformat(),
+                                    "status": task_status
+                                })
+                                project["last_updated"] = datetime.datetime.now().isoformat()
+                                st.success("Task added!")
+                                st.rerun()
+                
+                with tab4:
+                    st.subheader("Team Members")
+                    
+                    # Display existing team members
+                    if not project.get("team"):
+                        st.info("No team members assigned to this project.")
+                    else:
+                        for tmidx, member in enumerate(project["team"]):
+                            cols = st.columns([2, 2, 2, 1])
+                            with cols[0]:
+                                st.write(member["name"])
+                            with cols[1]:
+                                st.write(member["role"])
+                            with cols[2]:
+                                st.write(member["email"])
+                            with cols[3]:
+                                if st.button("🗑", key=f"remove_tm_{idx}_{tmidx}"):
+                                    project["team"].pop(tmidx)
+                                    project["last_updated"] = datetime.datetime.now().isoformat()
+                                    st.success("Team member removed!")
+                                    st.rerun()
+                    
+                    # Add new team member
+                    st.subheader("Add Team Member")
+                    with st.form(key=f"add_team_{idx}"):
+                        member_name = st.text_input("Name", key=f"tm_name_{idx}")
+                        member_role = st.text_input("Role", key=f"tm_role_{idx}")
+                        member_email = st.text_input("Email", key=f"tm_email_{idx}")
+                        submitted = st.form_submit_button("Add Team Member")
+                        
+                        if submitted:
+                            if not member_name:
+                                st.error("Name is required")
+                            else:
+                                if "team" not in project:
+                                    project["team"] = []
+                                
+                                project["team"].append({
+                                    "name": member_name,
+                                    "role": member_role,
+                                    "email": member_email
+                                })
+                                project["last_updated"] = datetime.datetime.now().isoformat()
+                                st.success("Team member added!")
+                                st.rerun()
