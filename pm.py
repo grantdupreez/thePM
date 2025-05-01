@@ -11,7 +11,7 @@ from streamlit_timeline import timeline
 # Set page configuration first
 st.set_page_config(page_title="Project Management Tool", layout="wide")
 
-# Initialize session state before doing anything else
+# Initialize basic session state before anything else
 if "initialized" not in st.session_state:
     st.session_state.initialized = True
     if "password_correct" not in st.session_state:
@@ -30,6 +30,8 @@ if "initialized" not in st.session_state:
         st.session_state.current_project = None
     if "documents" not in st.session_state:
         st.session_state.documents = []
+    if "logging_out" not in st.session_state:
+        st.session_state.logging_out = False
 
 def check_password():
     """Returns `True` if the user had a correct password."""
@@ -51,20 +53,23 @@ def check_password():
                 st.secrets.passwords[st.session_state["username"]],
             ):
                 st.session_state["password_correct"] = True
-                del st.session_state["password"]  # Don't store the username or password.
-                del st.session_state["username"]
+                if "password" in st.session_state:
+                    del st.session_state["password"]  # Don't store the password
+                if "username" in st.session_state:
+                    del st.session_state["username"]  # Don't store the username
             else:
                 st.session_state["password_correct"] = False
         except Exception as e:
             st.error(f"Error checking password: {str(e)}")
             st.session_state["password_correct"] = False
 
-    # Return True if the username + password is validated.
+    # Return True if the username + password is validated
     if st.session_state.get("password_correct", False):
         return True
 
-    # Show inputs for username + password.
+    # Show login page
     st.title("Project Management Tool - Login")
+    st.write("Please log in to access the application.")
     login_form()
     
     # Only show the error message if the user attempted to log in (not during logout)
@@ -169,7 +174,8 @@ def create_sidebar():
         for view in views:
             if st.button(view, key=f"nav_{view}"):
                 st.session_state.current_view = view
-                st.session_state.messages = []  # Clear chat when switching views
+                if "messages" in st.session_state:
+                    st.session_state.messages = []  # Clear chat when switching views
                 st.rerun()
         
         # Only show project prompts in AI Assistant view
@@ -443,6 +449,7 @@ def display_projects():
                         st.success("Project updated successfully!")
                         st.rerun()
                 
+                # Continue with milestones, tasks, and team tabs from your existing code...
                 with tab2:
                     st.subheader("Milestones")
                     if not project.get("milestones"):
@@ -471,7 +478,7 @@ def display_projects():
                                 st.success("Milestone updated!")
                                 st.rerun()
                     
-                    # Add new milestone
+                    # Add new milestone form
                     st.subheader("Add Milestone")
                     with st.form(key=f"add_milestone_{idx}"):
                         ms_name = st.text_input("Milestone Name", key=f"ms_name_{idx}")
@@ -547,7 +554,7 @@ def display_projects():
                                     st.write(f"**End Date:** {task['end_date']}")
                                     st.write(f"**Status:** {task['status']}")
                                 
-                                # Update task
+                                # Update task status
                                 new_task_status = st.selectbox(
                                     "Update Status",
                                     options=["Not Started", "In Progress", "Completed", "Blocked"],
@@ -560,7 +567,7 @@ def display_projects():
                                     st.success("Task updated!")
                                     st.rerun()
                     
-                    # Add new task
+                    # Add new task form
                     st.subheader("Add Task")
                     with st.form(key=f"add_task_{idx}"):
                         task_name = st.text_input("Task Name", key=f"task_name_{idx}")
@@ -645,3 +652,378 @@ def display_projects():
                                 project["last_updated"] = datetime.datetime.now().isoformat()
                                 st.success("Team member added!")
                                 st.rerun()
+
+def display_documents():
+    """Display the documents view for managing project documents"""
+    st.title("Project Documents")
+    
+    # Initialize documents list if not exists
+    if "documents" not in st.session_state:
+        st.session_state.documents = []
+    
+    # Document upload form
+    st.subheader("Upload Document")
+    
+    upload_col1, upload_col2 = st.columns([3, 1])
+    with upload_col1:
+        uploaded_file = st.file_uploader("Choose a file", type=["pdf", "docx", "txt", "csv", "xlsx"])
+    with upload_col2:
+        if uploaded_file is not None:
+            document_type = st.selectbox(
+                "Document Type",
+                options=["Requirements", "Plan", "Report", "Meeting Minutes", "Other"]
+            )
+    
+    if uploaded_file is not None:
+        st.write("File details:")
+        file_details = {
+            "Filename": uploaded_file.name,
+            "File size": f"{uploaded_file.size / 1024:.2f} KB",
+            "Type": uploaded_file.type
+        }
+        
+        for key, value in file_details.items():
+            st.write(f"**{key}:** {value}")
+        
+        # Associate with project
+        project_names = ["None"] + [p["name"] for p in st.session_state.projects]
+        associated_project = st.selectbox("Associate with Project", options=project_names)
+        
+        document_description = st.text_area("Document Description (optional)")
+        
+        if st.button("Save Document"):
+            # Extract text if PDF
+            content = ""
+            if uploaded_file.type == "application/pdf":
+                content = extract_text_from_pdf(uploaded_file)
+            
+            # Save document
+            document = {
+                "id": len(st.session_state.documents) + 1,
+                "name": uploaded_file.name,
+                "type": document_type,
+                "description": document_description,
+                "associated_project": None if associated_project == "None" else associated_project,
+                "upload_date": datetime.datetime.now().isoformat(),
+                "content": content,
+                "size": uploaded_file.size,
+                "file_type": uploaded_file.type
+            }
+            
+            st.session_state.documents.append(document)
+            st.success(f"Document '{uploaded_file.name}' saved successfully!")
+            st.session_state.canvas_text = content  # Add content to canvas for AI processing
+            st.rerun()
+    
+    # Document library
+    st.subheader("Document Library")
+    
+    if not st.session_state.documents:
+        st.info("No documents uploaded yet.")
+    else:
+        # Filter options
+        col1, col2 = st.columns(2)
+        with col1:
+            filter_type = st.multiselect(
+                "Filter by Type",
+                options=["Requirements", "Plan", "Report", "Meeting Minutes", "Other"],
+                default=[]
+            )
+        with col2:
+            filter_project = st.multiselect(
+                "Filter by Project",
+                options=["None"] + [p["name"] for p in st.session_state.projects],
+                default=[]
+            )
+        
+        # Apply filters
+        filtered_docs = st.session_state.documents
+        if filter_type:
+            filtered_docs = [d for d in filtered_docs if d["type"] in filter_type]
+        if filter_project:
+            project_filter = ["None" if p == "None" else p for p in filter_project]
+            filtered_docs = [d for d in filtered_docs if d["associated_project"] in project_filter]
+        
+        # Display documents
+        for doc in filtered_docs:
+            with st.expander(f"{doc['name']} ({doc['type']})"):
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.write(f"**Type:** {doc['type']}")
+                    st.write(f"**Description:** {doc['description'] if doc['description'] else 'No description'}")
+                    st.write(f"**Upload Date:** {doc['upload_date'].split('T')[0]}")
+                with col2:
+                    st.write(f"**Project:** {doc['associated_project'] if doc['associated_project'] else 'None'}")
+                    st.write(f"**Size:** {doc['size'] / 1024:.2f} KB")
+                    if doc['content']:
+                        if st.button("View Content", key=f"view_{doc['id']}"):
+                            st.session_state.canvas_text = doc['content']
+                            st.session_state.current_view = "AI Assistant"
+                            st.rerun()
+                
+                # Delete document
+                if st.button("Delete Document", key=f"delete_{doc['id']}"):
+                    st.session_state.documents.remove(doc)
+                    st.success(f"Document '{doc['name']}' deleted successfully!")
+                    st.rerun()
+
+def display_ai_assistant():
+    """Display the AI Assistant view for project management assistance"""
+    st.title("Project Management AI Assistant")
+    
+    # System prompt for project management focus
+    if "ai_system_prompt" not in st.session_state:
+        st.session_state.ai_system_prompt = """You are a project management assistant that helps with all aspects of project management. 
+        Your role is to provide guidance, templates, and suggestions for each phase of the project lifecycle:
+        1. Project Initiation (e.g., creating project charters, stakeholder analysis)
+        2. Project Planning (e.g., creating WBS, schedules, risk assessments)
+        3. Project Execution (e.g., status reports, team coordination)
+        4. Project Monitoring (e.g., performance tracking, issue resolution)
+        5. Project Closure (e.g., lessons learned, completion reports)
+        
+        Provide practical, actionable advice. You can generate templates, plans, and reports based on the information provided.
+        Always consider best practices from PMI and PRINCE2 methodologies when applicable.
+        """
+    
+    # Prompt customization
+    with st.expander("Customize Assistant", expanded=False):
+        ai_system_prompt = st.text_area(
+            "System Prompt (specify how the assistant should behave)",
+            value=st.session_state.ai_system_prompt,
+            height=200
+        )
+        
+        if ai_system_prompt != st.session_state.ai_system_prompt:
+            st.session_state.ai_system_prompt = ai_system_prompt
+    
+    # Project context selector
+    st.subheader("Project Context")
+    if st.session_state.projects:
+        project_names = ["None"] + [p["name"] for p in st.session_state.projects]
+        selected_project = st.selectbox(
+            "Select a project for context",
+            options=project_names,
+            index=0
+        )
+        
+        if selected_project != "None":
+            # Find selected project
+            project = next((p for p in st.session_state.projects if p["name"] == selected_project), None)
+            if project:
+                st.session_state.current_project = project
+                
+                # Display project info
+                st.write(f"**Project:** {project['name']}")
+                st.write(f"**Status:** {project['status']} ({project['progress']}% complete)")
+                st.write(f"**Timeline:** {project['start_date']} to {project['end_date']}")
+                
+                # Add project context to canvas
+                if st.button("Add Project Context to Prompt"):
+                    project_context = f"""
+                    Project Name: {project['name']}
+                    Description: {project['description']}
+                    Status: {project['status']}
+                    Progress: {project['progress']}%
+                    Timeline: {project['start_date']} to {project['end_date']}
+                    """
+                    
+                    # Add milestones
+                    if project.get("milestones"):
+                        project_context += "\n\nMilestones:\n"
+                        for milestone in project["milestones"]:
+                            project_context += f"- {milestone['name']} ({milestone['date']}): {milestone['status']}\n"
+                    
+                    # Add tasks
+                    if project.get("tasks"):
+                        project_context += "\n\nTasks:\n"
+                        for task in project["tasks"]:
+                            project_context += f"- {task['name']} ({task['status']}): Assigned to {task['assignee']}\n"
+                    
+                    # Add team
+                    if project.get("team"):
+                        project_context += "\n\nTeam:\n"
+                        for member in project["team"]:
+                            project_context += f"- {member['name']} ({member['role']})\n"
+                    
+                    if "canvas_text" not in st.session_state:
+                        st.session_state.canvas_text = ""
+                    
+                    # Add context to canvas
+                    if st.session_state.canvas_text:
+                        st.session_state.canvas_text += "\n\n--- Project Context ---\n" + project_context
+                    else:
+                        st.session_state.canvas_text = "--- Project Context ---\n" + project_context
+                    
+                    st.success("Project context added to prompt!")
+    else:
+        st.info("No projects available. Create a project in the Projects tab to use project context.")
+    
+    # Text canvas for pasting content
+    st.markdown("### Prompt Canvas")
+    st.markdown("Enter your prompt or paste project content here:")
+    
+    # Initialize canvas text in session state if not exists
+    if "canvas_text" not in st.session_state:
+        st.session_state.canvas_text = ""
+    
+    # Text area for pasting content
+    canvas_input = st.text_area(
+        "Enter prompt",
+        value=st.session_state.canvas_text,
+        height=150,
+        key="canvas_area"
+    )
+    
+    # Update session state when text changes
+    if canvas_input != st.session_state.canvas_text:
+        st.session_state.canvas_text = canvas_input
+    
+    # Clear canvas button
+    if st.button("Clear Canvas"):
+        st.session_state.canvas_text = ""
+        st.rerun()
+    
+    # Chat interface
+    st.markdown("### Project Management Assistant")
+    
+    # Display chat messages
+    for message in st.session_state.messages:
+        with st.chat_message(message["role"]):
+            st.markdown(message["content"])
+    
+    # Chat input
+    if prompt := st.chat_input("Ask the Project Management Assistant..."):
+        # Combine user's chat input with any text from the canvas
+        combined_input = prompt
+        
+        if st.session_state.canvas_text.strip():
+            combined_input = f"{prompt}\n\n**Additional Context:**\n```\n{st.session_state.canvas_text}\n```"
+        
+        # Add the combined message to history
+        st.session_state.messages.append({"role": "user", "content": combined_input})
+        
+        with st.chat_message("user"):
+            st.markdown(combined_input)
+        
+        with st.chat_message("assistant"):
+            message_placeholder = st.empty()
+            
+            # Try to import and initialize Anthropic client
+            try:
+                import anthropic
+                
+                # Try to get version information
+                anthropic_version = getattr(anthropic, "__version__", "unknown")
+                
+                # Only proceed if Anthropic package is properly installed
+                if anthropic_version != "unknown":
+                    # Get max tokens from secrets or use default
+                    max_tokens = int(st.secrets.get("MAX_TOKENS", 4096))
+                    
+                    # Get model from session state or use default
+                    model = st.session_state.get("ai_model", "claude-3-haiku-20240307")
+                    
+                    # Define output guidelines
+                    OUTPUT_GUIDELINES = '''
+                    BLOCK CATEGORY:
+                        - Promoting violence, illegal activities, or hate speech
+                        - Explicit sexual content
+                        - Harmful misinformation or conspiracy theories
+                    
+                        ALLOW CATEGORY:
+                        - Most other content is allowed, as long as it is not explicitly disallowed
+                    '''
+                    
+                    # Format system prompt
+                    system_prompt = st.session_state.ai_system_prompt + f"\n\nPlease adhere to these output guidelines: {OUTPUT_GUIDELINES}"
+                    
+                    # Check which client initialization to use
+                    try:
+                        # Try the newer client style (anthropic >= 0.5.0)
+                        client = anthropic.Anthropic(api_key=st.secrets["ANTHROPIC_API_KEY"])
+                        
+                        # Stream the response
+                        full_response = ""
+                        with client.messages.stream(
+                            max_tokens=max_tokens,
+                            system=system_prompt,
+                            messages=[{"role": m["role"], "content": m["content"]} for m in st.session_state.messages],
+                            model=model,
+                        ) as stream:
+                            for text in stream.text_stream:
+                                full_response += str(text) if text is not None else ""
+                                message_placeholder.markdown(full_response + "▌")
+                            
+                            message_placeholder.markdown(full_response)
+                    except (TypeError, AttributeError):
+                        # Fall back to older client style if newer style fails
+                        try:
+                            client = anthropic.Client(api_key=st.secrets["ANTHROPIC_API_KEY"])
+                            
+                            # Format prompt for older client
+                            prompt_text = f"{anthropic.HUMAN_PROMPT} {combined_input} {anthropic.AI_PROMPT}"
+                            
+                            # Stream the response
+                            full_response = ""
+                            response = client.completion_stream(
+                                prompt=prompt_text,
+                                max_tokens_to_sample=max_tokens,
+                                model=model,
+                            )
+                            
+                            for text in response:
+                                full_response += text
+                                message_placeholder.markdown(full_response + "▌")
+                            
+                            message_placeholder.markdown(full_response)
+                        except Exception as e:
+                            st.error(f"Error with older Anthropic client: {str(e)}")
+                            full_response = "I couldn't process your request with the API. Please try again."
+                            message_placeholder.markdown(full_response)
+                else:
+                    # If anthropic is not properly installed
+                    full_response = "The anthropic package is not properly installed. Please run 'pip install anthropic' to use the AI Assistant."
+                    message_placeholder.markdown(full_response)
+            except ImportError:
+                # If anthropic package is not installed
+                full_response = "The anthropic package is not installed. Please run 'pip install anthropic' to use the AI Assistant."
+                message_placeholder.markdown(full_response)
+            except Exception as e:
+                # Any other errors
+                st.error(f"Error: {str(e)}")
+                full_response = "I encountered an error while processing your request. Please check your configuration and try again."
+                message_placeholder.markdown(full_response)
+            
+            # Add the response to chat history
+            st.session_state.messages.append({"role": "assistant", "content": full_response})
+        
+        # Clear the canvas after sending
+        st.session_state.canvas_text = ""
+
+def main():
+    """Main function to run the app"""
+    # Initialize session state
+    init_session_state()
+    
+    # IMPORTANT: Check password first, before importing any heavy libraries
+    if not check_password():
+        return
+    
+    # Create sidebar
+    create_sidebar()
+    
+    # Display the appropriate view
+    if st.session_state.current_view == "Dashboard":
+        display_dashboard()
+    elif st.session_state.current_view == "Projects":
+        display_projects()
+    elif st.session_state.current_view == "Documents":
+        display_documents()
+    elif st.session_state.current_view == "AI Assistant":
+        display_ai_assistant()
+    else:
+        display_dashboard()
+
+# Run the main function
+if __name__ == "__main__":
+    main()
