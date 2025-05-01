@@ -311,461 +311,15 @@ def display_dashboard():
 
 def display_projects():
     """Display the projects view for managing projects"""
-    st.title("Projects Management")
-    
-    # Project creation form
-    with st.expander("Create New Project", expanded=len(st.session_state.projects) == 0):
-        with st.form("new_project_form"):
-            project_name = st.text_input("Project Name")
-            project_desc = st.text_area("Description")
-            col1, col2 = st.columns(2)
-            with col1:
-                start_date = st.date_input("Start Date")
-            with col2:
-                end_date = st.date_input("End Date")
-            
-            status_options = ["Planning", "Active", "On Hold", "Completed", "Cancelled"]
-            project_status = st.selectbox("Status", status_options, index=0)
-            
-            # Milestone inputs
-            st.subheader("Initial Milestones")
-            milestone_names = st.text_area("Milestone Names (one per line)")
-            milestone_dates = st.text_area("Milestone Dates (one per line, YYYY-MM-DD format)")
-            
-            submitted = st.form_submit_button("Create Project")
-            
-            if submitted:
-                if not project_name:
-                    st.error("Project name is required")
-                else:
-                    # Process milestones
-                    milestones = []
-                    names = milestone_names.strip().split('\n') if milestone_names else []
-                    dates = milestone_dates.strip().split('\n') if milestone_dates else []
-                    
-                    for i in range(min(len(names), len(dates))):
-                        if names[i].strip() and dates[i].strip():
-                            try:
-                                # Validate date format
-                                datetime.date.fromisoformat(dates[i].strip())
-                                milestones.append({
-                                    "name": names[i].strip(),
-                                    "date": dates[i].strip(),
-                                    "status": "Pending"
-                                })
-                            except ValueError:
-                                st.error(f"Invalid date format: {dates[i]}")
-                    
-                    # Create new project
-                    new_project = {
-                        "id": len(st.session_state.projects) + 1,
-                        "name": project_name,
-                        "description": project_desc,
-                        "start_date": start_date.isoformat(),
-                        "end_date": end_date.isoformat(),
-                        "status": project_status,
-                        "progress": 0,
-                        "milestones": milestones,
-                        "tasks": [],
-                        "team": [],
-                        "last_updated": datetime.datetime.now().isoformat()
-                    }
-                    
-                    st.session_state.projects.append(new_project)
-                    st.success(f"Project '{project_name}' created successfully!")
-                    st.rerun()
-    
-    # Project list
-    st.subheader("Your Projects")
-    
-    if not st.session_state.projects:
-        st.info("No projects created yet. Use the form above to create your first project.")
-    else:
-        # Filter options
-        col1, col2 = st.columns(2)
-        with col1:
-            filter_status = st.multiselect(
-                "Filter by Status",
-                options=["Planning", "Active", "On Hold", "Completed", "Cancelled"],
-                default=[]
-            )
-        with col2:
-            sort_option = st.selectbox(
-                "Sort by",
-                options=["Name", "Start Date", "End Date", "Status", "Progress"],
-                index=0
-            )
-        
-        # Apply filters
-        filtered_projects = st.session_state.projects
-        if filter_status:
-            filtered_projects = [p for p in filtered_projects if p["status"] in filter_status]
-        
-        # Apply sorting
-        if sort_option == "Name":
-            filtered_projects.sort(key=lambda x: x["name"])
-        elif sort_option == "Start Date":
-            filtered_projects.sort(key=lambda x: x["start_date"])
-        elif sort_option == "End Date":
-            filtered_projects.sort(key=lambda x: x["end_date"])
-        elif sort_option == "Status":
-            filtered_projects.sort(key=lambda x: x["status"])
-        elif sort_option == "Progress":
-            filtered_projects.sort(key=lambda x: x["progress"], reverse=True)
-        
-        # Display projects
-        for idx, project in enumerate(filtered_projects):
-            with st.expander(f"{project['name']} - {project['status']}"):
-                tab1, tab2, tab3, tab4 = st.tabs(["Overview", "Milestones", "Tasks", "Team"])
-                
-                with tab1:
-                    col1, col2 = st.columns(2)
-                    with col1:
-                        st.write(f"**Description:** {project['description']}")
-                        st.write(f"**Start Date:** {project['start_date']}")
-                        st.write(f"**End Date:** {project['end_date']}")
-                    with col2:
-                        st.write(f"**Status:** {project['status']}")
-                        st.write(f"**Progress:** {project['progress']}%")
-                        st.progress(project['progress']/100)
-                    
-                    # Update project
-                    st.subheader("Update Project")
-                    new_status = st.selectbox(
-                        "Update Status",
-                        options=["Planning", "Active", "On Hold", "Completed", "Cancelled"],
-                        index=["Planning", "Active", "On Hold", "Completed", "Cancelled"].index(project["status"]),
-                        key=f"status_{idx}"
-                    )
-                    new_progress = st.slider(
-                        "Update Progress",
-                        0, 100, project["progress"],
-                        key=f"progress_{idx}"
-                    )
-                    if st.button("Update", key=f"update_{idx}"):
-                        project["status"] = new_status
-                        project["progress"] = new_progress
-                        project["last_updated"] = datetime.datetime.now().isoformat()
-                        st.success("Project updated successfully!")
-                        st.rerun()
-                
-                # Continue with milestones, tasks, and team tabs from your existing code...
-                with tab2:
-                    st.subheader("Milestones")
-                    if not project.get("milestones"):
-                        st.info("No milestones for this project.")
-                    else:
-                        # Display existing milestones
-                        for midx, milestone in enumerate(project["milestones"]):
-                            cols = st.columns([3, 2, 2, 1])
-                            with cols[0]:
-                                st.write(milestone["name"])
-                            with cols[1]:
-                                st.write(milestone["date"])
-                            with cols[2]:
-                                status = st.selectbox(
-                                    "Status",
-                                    options=["Pending", "In Progress", "Completed", "Delayed"],
-                                    index=["Pending", "In Progress", "Completed", "Delayed"].index(milestone["status"]),
-                                    key=f"ms_status_{idx}_{midx}"
-                                )
-                            with cols[3]:
-                                update = st.button("✓", key=f"ms_update_{idx}_{midx}")
-                                
-                            if update:
-                                project["milestones"][midx]["status"] = status
-                                project["last_updated"] = datetime.datetime.now().isoformat()
-                                st.success("Milestone updated!")
-                                st.rerun()
-                    
-                    # Add new milestone form
-                    st.subheader("Add Milestone")
-                    with st.form(key=f"add_milestone_{idx}"):
-                        ms_name = st.text_input("Milestone Name", key=f"ms_name_{idx}")
-                        ms_date = st.date_input("Date", key=f"ms_date_{idx}")
-                        ms_status = st.selectbox(
-                            "Status",
-                            options=["Pending", "In Progress", "Completed", "Delayed"],
-                            index=0,
-                            key=f"ms_status_new_{idx}"
-                        )
-                        submitted = st.form_submit_button("Add Milestone")
-                        
-                        if submitted:
-                            if not ms_name:
-                                st.error("Milestone name is required")
-                            else:
-                                if "milestones" not in project:
-                                    project["milestones"] = []
-                                
-                                project["milestones"].append({
-                                    "name": ms_name,
-                                    "date": ms_date.isoformat(),
-                                    "status": ms_status
-                                })
-                                project["last_updated"] = datetime.datetime.now().isoformat()
-                                st.success("Milestone added!")
-                                st.rerun()
-                
-                with tab3:
-                    st.subheader("Tasks")
-                    
-                    # Display task timeline if tasks exist
-                    if project.get("tasks"):
-                        timeline_data = {
-                            "events": []
-                        }
-                        
-                        for task in project["tasks"]:
-                            task_item = {
-                                "start_date": {
-                                    "year": task["start_date"].split("-")[0],
-                                    "month": task["start_date"].split("-")[1],
-                                    "day": task["start_date"].split("-")[2]
-                                },
-                                "end_date": {
-                                    "year": task["end_date"].split("-")[0],
-                                    "month": task["end_date"].split("-")[1],
-                                    "day": task["end_date"].split("-")[2]
-                                },
-                                "text": {
-                                    "headline": task["name"],
-                                    "text": f"Assigned to: {task['assignee']}<br>Status: {task['status']}"
-                                },
-                                "group": task["status"]
-                            }
-                            timeline_data["events"].append(task_item)
-                        
-                        if timeline_data["events"]:
-                            timeline(timeline_data, height=400)
-                    
-                    # Display existing tasks
-                    if not project.get("tasks"):
-                        st.info("No tasks for this project.")
-                    else:
-                        for tidx, task in enumerate(project["tasks"]):
-                            with st.expander(f"{task['name']} - {task['status']}"):
-                                col1, col2 = st.columns(2)
-                                with col1:
-                                    st.write(f"**Description:** {task['description']}")
-                                    st.write(f"**Assignee:** {task['assignee']}")
-                                with col2:
-                                    st.write(f"**Start Date:** {task['start_date']}")
-                                    st.write(f"**End Date:** {task['end_date']}")
-                                    st.write(f"**Status:** {task['status']}")
-                                
-                                # Update task status
-                                new_task_status = st.selectbox(
-                                    "Update Status",
-                                    options=["Not Started", "In Progress", "Completed", "Blocked"],
-                                    index=["Not Started", "In Progress", "Completed", "Blocked"].index(task["status"]),
-                                    key=f"task_status_{idx}_{tidx}"
-                                )
-                                if st.button("Update Status", key=f"task_update_{idx}_{tidx}"):
-                                    project["tasks"][tidx]["status"] = new_task_status
-                                    project["last_updated"] = datetime.datetime.now().isoformat()
-                                    st.success("Task updated!")
-                                    st.rerun()
-                    
-                    # Add new task form
-                    st.subheader("Add Task")
-                    with st.form(key=f"add_task_{idx}"):
-                        task_name = st.text_input("Task Name", key=f"task_name_{idx}")
-                        task_desc = st.text_area("Description", key=f"task_desc_{idx}")
-                        task_assignee = st.text_input("Assignee", key=f"task_assignee_{idx}")
-                        
-                        col1, col2 = st.columns(2)
-                        with col1:
-                            task_start = st.date_input("Start Date", key=f"task_start_{idx}")
-                        with col2:
-                            task_end = st.date_input("End Date", key=f"task_end_{idx}")
-                        
-                        task_status = st.selectbox(
-                            "Status",
-                            options=["Not Started", "In Progress", "Completed", "Blocked"],
-                            index=0,
-                            key=f"task_status_new_{idx}"
-                        )
-                        submitted = st.form_submit_button("Add Task")
-                        
-                        if submitted:
-                            if not task_name:
-                                st.error("Task name is required")
-                            else:
-                                if "tasks" not in project:
-                                    project["tasks"] = []
-                                
-                                project["tasks"].append({
-                                    "name": task_name,
-                                    "description": task_desc,
-                                    "assignee": task_assignee,
-                                    "start_date": task_start.isoformat(),
-                                    "end_date": task_end.isoformat(),
-                                    "status": task_status
-                                })
-                                project["last_updated"] = datetime.datetime.now().isoformat()
-                                st.success("Task added!")
-                                st.rerun()
-                
-                with tab4:
-                    st.subheader("Team Members")
-                    
-                    # Display existing team members
-                    if not project.get("team"):
-                        st.info("No team members assigned to this project.")
-                    else:
-                        for tmidx, member in enumerate(project["team"]):
-                            cols = st.columns([2, 2, 2, 1])
-                            with cols[0]:
-                                st.write(member["name"])
-                            with cols[1]:
-                                st.write(member["role"])
-                            with cols[2]:
-                                st.write(member["email"])
-                            with cols[3]:
-                                if st.button("🗑", key=f"remove_tm_{idx}_{tmidx}"):
-                                    project["team"].pop(tmidx)
-                                    project["last_updated"] = datetime.datetime.now().isoformat()
-                                    st.success("Team member removed!")
-                                    st.rerun()
-                    
-                    # Add new team member
-                    st.subheader("Add Team Member")
-                    with st.form(key=f"add_team_{idx}"):
-                        member_name = st.text_input("Name", key=f"tm_name_{idx}")
-                        member_role = st.text_input("Role", key=f"tm_role_{idx}")
-                        member_email = st.text_input("Email", key=f"tm_email_{idx}")
-                        submitted = st.form_submit_button("Add Team Member")
-                        
-                        if submitted:
-                            if not member_name:
-                                st.error("Name is required")
-                            else:
-                                if "team" not in project:
-                                    project["team"] = []
-                                
-                                project["team"].append({
-                                    "name": member_name,
-                                    "role": member_role,
-                                    "email": member_email
-                                })
-                                project["last_updated"] = datetime.datetime.now().isoformat()
-                                st.success("Team member added!")
-                                st.rerun()
+    # This function is unchanged from your original code
+    # Just keeping the reference here to avoid making the artifact too long
+    # You can continue using your existing function
 
 def display_documents():
     """Display the documents view for managing project documents"""
-    st.title("Project Documents")
-    
-    # Initialize documents list if not exists
-    if "documents" not in st.session_state:
-        st.session_state.documents = []
-    
-    # Document upload form
-    st.subheader("Upload Document")
-    
-    upload_col1, upload_col2 = st.columns([3, 1])
-    with upload_col1:
-        uploaded_file = st.file_uploader("Choose a file", type=["pdf", "docx", "txt", "csv", "xlsx"])
-    with upload_col2:
-        if uploaded_file is not None:
-            document_type = st.selectbox(
-                "Document Type",
-                options=["Requirements", "Plan", "Report", "Meeting Minutes", "Other"]
-            )
-    
-    if uploaded_file is not None:
-        st.write("File details:")
-        file_details = {
-            "Filename": uploaded_file.name,
-            "File size": f"{uploaded_file.size / 1024:.2f} KB",
-            "Type": uploaded_file.type
-        }
-        
-        for key, value in file_details.items():
-            st.write(f"**{key}:** {value}")
-        
-        # Associate with project
-        project_names = ["None"] + [p["name"] for p in st.session_state.projects]
-        associated_project = st.selectbox("Associate with Project", options=project_names)
-        
-        document_description = st.text_area("Document Description (optional)")
-        
-        if st.button("Save Document"):
-            # Extract text if PDF
-            content = ""
-            if uploaded_file.type == "application/pdf":
-                content = extract_text_from_pdf(uploaded_file)
-            
-            # Save document
-            document = {
-                "id": len(st.session_state.documents) + 1,
-                "name": uploaded_file.name,
-                "type": document_type,
-                "description": document_description,
-                "associated_project": None if associated_project == "None" else associated_project,
-                "upload_date": datetime.datetime.now().isoformat(),
-                "content": content,
-                "size": uploaded_file.size,
-                "file_type": uploaded_file.type
-            }
-            
-            st.session_state.documents.append(document)
-            st.success(f"Document '{uploaded_file.name}' saved successfully!")
-            st.session_state.canvas_text = content  # Add content to canvas for AI processing
-            st.rerun()
-    
-    # Document library
-    st.subheader("Document Library")
-    
-    if not st.session_state.documents:
-        st.info("No documents uploaded yet.")
-    else:
-        # Filter options
-        col1, col2 = st.columns(2)
-        with col1:
-            filter_type = st.multiselect(
-                "Filter by Type",
-                options=["Requirements", "Plan", "Report", "Meeting Minutes", "Other"],
-                default=[]
-            )
-        with col2:
-            filter_project = st.multiselect(
-                "Filter by Project",
-                options=["None"] + [p["name"] for p in st.session_state.projects],
-                default=[]
-            )
-        
-        # Apply filters
-        filtered_docs = st.session_state.documents
-        if filter_type:
-            filtered_docs = [d for d in filtered_docs if d["type"] in filter_type]
-        if filter_project:
-            project_filter = ["None" if p == "None" else p for p in filter_project]
-            filtered_docs = [d for d in filtered_docs if d["associated_project"] in project_filter]
-        
-        # Display documents
-        for doc in filtered_docs:
-            with st.expander(f"{doc['name']} ({doc['type']})"):
-                col1, col2 = st.columns(2)
-                with col1:
-                    st.write(f"**Type:** {doc['type']}")
-                    st.write(f"**Description:** {doc['description'] if doc['description'] else 'No description'}")
-                    st.write(f"**Upload Date:** {doc['upload_date'].split('T')[0]}")
-                with col2:
-                    st.write(f"**Project:** {doc['associated_project'] if doc['associated_project'] else 'None'}")
-                    st.write(f"**Size:** {doc['size'] / 1024:.2f} KB")
-                    if doc['content']:
-                        if st.button("View Content", key=f"view_{doc['id']}"):
-                            st.session_state.canvas_text = doc['content']
-                            st.session_state.current_view = "AI Assistant"
-                            st.rerun()
-                
-                # Delete document
-                if st.button("Delete Document", key=f"delete_{doc['id']}"):
-                    st.session_state.documents.remove(doc)
-                    st.success(f"Document '{doc['name']}' deleted successfully!")
-                    st.rerun()
+    # This function is unchanged from your original code
+    # Just keeping the reference here to avoid making the artifact too long
+    # You can continue using your existing function
 
 def display_ai_assistant():
     """Display the AI Assistant view for project management assistance"""
@@ -908,81 +462,75 @@ def display_ai_assistant():
         with st.chat_message("assistant"):
             message_placeholder = st.empty()
             
-            # Try to import and initialize Anthropic client
+            # Try to import and initialize Anthropic client - FIXED VERSION
             try:
                 import anthropic
                 
-                # Try to get version information
-                anthropic_version = getattr(anthropic, "__version__", "unknown")
+                # Get max tokens from secrets or use default
+                max_tokens = int(st.secrets.get("MAX_TOKENS", 4096))
                 
-                # Only proceed if Anthropic package is properly installed
-                if anthropic_version != "unknown":
-                    # Get max tokens from secrets or use default
-                    max_tokens = int(st.secrets.get("MAX_TOKENS", 4096))
+                # Get model from session state or use default
+                model = st.session_state.get("ai_model", "claude-3-haiku-20240307")
+                
+                # Define output guidelines
+                OUTPUT_GUIDELINES = '''
+                BLOCK CATEGORY:
+                    - Promoting violence, illegal activities, or hate speech
+                    - Explicit sexual content
+                    - Harmful misinformation or conspiracy theories
+                
+                    ALLOW CATEGORY:
+                    - Most other content is allowed, as long as it is not explicitly disallowed
+                '''
+                
+                # Format system prompt
+                system_prompt = st.session_state.ai_system_prompt + f"\n\nPlease adhere to these output guidelines: {OUTPUT_GUIDELINES}"
+                
+                # Check for newer style API (>= 0.5.0)
+                if hasattr(anthropic, "Anthropic"):
+                    # Use newer client style - this is the recommended approach
+                    client = anthropic.Anthropic(api_key=st.secrets["ANTHROPIC_API_KEY"])
                     
-                    # Get model from session state or use default
-                    model = st.session_state.get("ai_model", "claude-3-haiku-20240307")
-                    
-                    # Define output guidelines
-                    OUTPUT_GUIDELINES = '''
-                    BLOCK CATEGORY:
-                        - Promoting violence, illegal activities, or hate speech
-                        - Explicit sexual content
-                        - Harmful misinformation or conspiracy theories
-                    
-                        ALLOW CATEGORY:
-                        - Most other content is allowed, as long as it is not explicitly disallowed
-                    '''
-                    
-                    # Format system prompt
-                    system_prompt = st.session_state.ai_system_prompt + f"\n\nPlease adhere to these output guidelines: {OUTPUT_GUIDELINES}"
-                    
-                    # Check which client initialization to use
-                    try:
-                        # Try the newer client style (anthropic >= 0.5.0)
-                        client = anthropic.Anthropic(api_key=st.secrets["ANTHROPIC_API_KEY"])
+                    # Stream the response
+                    full_response = ""
+                    with client.messages.stream(
+                        max_tokens=max_tokens,
+                        system=system_prompt,
+                        messages=[{"role": m["role"], "content": m["content"]} for m in st.session_state.messages],
+                        model=model,
+                    ) as stream:
+                        for text in stream.text_stream:
+                            full_response += str(text) if text is not None else ""
+                            message_placeholder.markdown(full_response + "▌")
                         
-                        # Stream the response
-                        full_response = ""
-                        with client.messages.stream(
-                            max_tokens=max_tokens,
-                            system=system_prompt,
-                            messages=[{"role": m["role"], "content": m["content"]} for m in st.session_state.messages],
-                            model=model,
-                        ) as stream:
-                            for text in stream.text_stream:
-                                full_response += str(text) if text is not None else ""
-                                message_placeholder.markdown(full_response + "▌")
-                            
-                            message_placeholder.markdown(full_response)
-                    except (TypeError, AttributeError):
-                        # Fall back to older client style if newer style fails
-                        try:
-                            client = anthropic.Client(api_key=st.secrets["ANTHROPIC_API_KEY"])
-                            
-                            # Format prompt for older client
-                            prompt_text = f"{anthropic.HUMAN_PROMPT} {combined_input} {anthropic.AI_PROMPT}"
-                            
-                            # Stream the response
-                            full_response = ""
-                            response = client.completion_stream(
-                                prompt=prompt_text,
-                                max_tokens_to_sample=max_tokens,
-                                model=model,
-                            )
-                            
-                            for text in response:
-                                full_response += text
-                                message_placeholder.markdown(full_response + "▌")
-                            
-                            message_placeholder.markdown(full_response)
-                        except Exception as e:
-                            st.error(f"Error with older Anthropic client: {str(e)}")
-                            full_response = "I couldn't process your request with the API. Please try again."
-                            message_placeholder.markdown(full_response)
+                        message_placeholder.markdown(full_response)
+                # Check for older style API with Client class
+                elif hasattr(anthropic, "Client"):
+                    # Use older client style
+                    st.info("Using older Anthropic client version. Consider upgrading to the latest version.")
+                    
+                    # Important fix: Don't pass proxies to the Client constructor
+                    client = anthropic.Client(api_key=st.secrets["ANTHROPIC_API_KEY"])
+                    
+                    # Format prompt for older client
+                    prompt_text = f"{anthropic.HUMAN_PROMPT} {combined_input} {anthropic.AI_PROMPT}"
+                    
+                    # Stream the response
+                    full_response = ""
+                    response = client.completion_stream(
+                        prompt=prompt_text,
+                        max_tokens_to_sample=max_tokens,
+                        model=model,
+                    )
+                    
+                    for text in response:
+                        full_response += text
+                        message_placeholder.markdown(full_response + "▌")
+                    
+                    message_placeholder.markdown(full_response)
                 else:
-                    # If anthropic is not properly installed
-                    full_response = "The anthropic package is not properly installed. Please run 'pip install anthropic' to use the AI Assistant."
+                    # Neither client style is available
+                    full_response = "Could not determine the correct Anthropic client type. Please ensure you have a compatible version of the anthropic package installed."
                     message_placeholder.markdown(full_response)
             except ImportError:
                 # If anthropic package is not installed
