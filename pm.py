@@ -2,11 +2,9 @@ import streamlit as st
 import hmac
 import PyPDF2
 import io
-import pandas as pd
 import datetime
 import json
 import os
-from streamlit_timeline import timeline
 
 # Set page configuration first
 st.set_page_config(page_title="Project Management Tool", layout="wide")
@@ -17,17 +15,13 @@ if "initialized" not in st.session_state:
     if "password_correct" not in st.session_state:
         st.session_state.password_correct = False
     if "current_view" not in st.session_state:
-        st.session_state.current_view = "Dashboard"
-    if "projects" not in st.session_state:
-        st.session_state.projects = []
+        st.session_state.current_view = "AI Assistant"
     if "canvas_text" not in st.session_state:
         st.session_state.canvas_text = ""
     if "messages" not in st.session_state:
         st.session_state.messages = []
     if "project_prompts" not in st.session_state:
         st.session_state.project_prompts = {}
-    if "current_project" not in st.session_state:
-        st.session_state.current_project = None
     if "documents" not in st.session_state:
         st.session_state.documents = []
     if "logging_out" not in st.session_state:
@@ -168,9 +162,9 @@ def create_sidebar():
         st.image("https://img.icons8.com/color/96/000000/project-management.png", width=50)
         st.title("Project Hub")
         
-        # Navigation
+        # Navigation (simplified - only Documents and AI Assistant)
         st.subheader("Navigation")
-        views = ["Dashboard", "Projects", "Documents", "AI Assistant"]
+        views = ["Documents", "AI Assistant"]
         for view in views:
             if st.button(view, key=f"nav_{view}"):
                 st.session_state.current_view = view
@@ -246,80 +240,102 @@ def create_sidebar():
                 st.session_state["password_correct"] = False
                 st.rerun()
 
-def display_dashboard():
-    """Display the dashboard view with project overview"""
-    st.title("Project Management Dashboard")
-    
-    # Summary metrics
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.metric("Active Projects", len([p for p in st.session_state.projects if p.get("status") == "Active"]))
-    with col2:
-        st.metric("Completed Projects", len([p for p in st.session_state.projects if p.get("status") == "Completed"]))
-    with col3:
-        st.metric("Total Documents", len(st.session_state.get("documents", [])))
-    
-    # Recent projects
-    st.subheader("Recent Projects")
-    if not st.session_state.projects:
-        st.info("No projects created yet. Go to the Projects tab to create your first project.")
-    else:
-        recent_projects = sorted(st.session_state.projects, key=lambda x: x.get("last_updated", ""), reverse=True)[:3]
-        for project in recent_projects:
-            with st.expander(f"{project['name']} ({project['status']})"):
-                st.write(f"**Description:** {project['description']}")
-                st.write(f"**Start Date:** {project['start_date']}")
-                st.write(f"**End Date:** {project['end_date']}")
-                progress = project.get("progress", 0)
-                st.progress(progress/100)
-                st.write(f"Progress: {progress}%")
-    
-    # Upcoming milestones
-    st.subheader("Upcoming Milestones")
-    milestones = []
-    for project in st.session_state.projects:
-        for milestone in project.get("milestones", []):
-            milestones.append({
-                "project": project["name"],
-                "name": milestone["name"],
-                "date": milestone["date"],
-                "status": milestone["status"]
-            })
-    
-    # Sort and filter upcoming milestones
-    today = datetime.date.today().isoformat()
-    upcoming = [m for m in milestones if m["date"] >= today and m["status"] != "Completed"]
-    upcoming.sort(key=lambda x: x["date"])
-    
-    if not upcoming:
-        st.info("No upcoming milestones.")
-    else:
-        for milestone in upcoming[:5]:  # Show top 5
-            st.write(f"**{milestone['date']}:** {milestone['name']} ({milestone['project']})")
-    
-    # Quick actions
-    st.subheader("Quick Actions")
-    col1, col2 = st.columns(2)
-    with col1:
-        if st.button("Create New Project"):
-            st.session_state.current_view = "Projects"
-            st.rerun()
-    with col2:
-        if st.button("Open AI Assistant"):
-            st.session_state.current_view = "AI Assistant"
-            st.rerun()
-
-def display_projects():
-    """Display the projects view for managing projects"""
-    # This function is unchanged from your original code
-    # Just keeping the reference here to avoid making the artifact too long
-    # You can continue using your existing function
-
 def display_documents():
     """Display the documents view for managing project documents"""
-    # This function is unchanged from your original code
-    # Just keeping the reference here to avoid making the artifact too long
-    # You can continue using your existing function
+    st.title("Document Manager")
+    
+    # Initialize documents list if not exists
+    if "documents" not in st.session_state:
+        st.session_state.documents = []
+    
+    # Document upload form
+    st.subheader("Upload Document")
+    
+    upload_col1, upload_col2 = st.columns([3, 1])
+    with upload_col1:
+        uploaded_file = st.file_uploader("Choose a file", type=["pdf", "docx", "txt", "csv", "xlsx"])
+    with upload_col2:
+        if uploaded_file is not None:
+            document_type = st.selectbox(
+                "Document Type",
+                options=["Requirements", "Plan", "Report", "Meeting Minutes", "Other"]
+            )
+    
+    if uploaded_file is not None:
+        st.write("File details:")
+        file_details = {
+            "Filename": uploaded_file.name,
+            "File size": f"{uploaded_file.size / 1024:.2f} KB",
+            "Type": uploaded_file.type
+        }
+        
+        for key, value in file_details.items():
+            st.write(f"**{key}:** {value}")
+        
+        document_description = st.text_area("Document Description (optional)")
+        
+        if st.button("Save Document"):
+            # Extract text if PDF
+            content = ""
+            if uploaded_file.type == "application/pdf":
+                content = extract_text_from_pdf(uploaded_file)
+            
+            # Save document
+            document = {
+                "id": len(st.session_state.documents) + 1,
+                "name": uploaded_file.name,
+                "type": document_type,
+                "description": document_description,
+                "upload_date": datetime.datetime.now().isoformat(),
+                "content": content,
+                "size": uploaded_file.size,
+                "file_type": uploaded_file.type
+            }
+            
+            st.session_state.documents.append(document)
+            st.success(f"Document '{uploaded_file.name}' saved successfully!")
+            st.session_state.canvas_text = content  # Add content to canvas for AI processing
+            st.rerun()
+    
+    # Document library
+    st.subheader("Document Library")
+    
+    if not st.session_state.documents:
+        st.info("No documents uploaded yet.")
+    else:
+        # Filter options
+        filter_type = st.multiselect(
+            "Filter by Type",
+            options=["Requirements", "Plan", "Report", "Meeting Minutes", "Other"],
+            default=[]
+        )
+        
+        # Apply filters
+        filtered_docs = st.session_state.documents
+        if filter_type:
+            filtered_docs = [d for d in filtered_docs if d["type"] in filter_type]
+        
+        # Display documents
+        for doc in filtered_docs:
+            with st.expander(f"{doc['name']} ({doc['type']})"):
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.write(f"**Type:** {doc['type']}")
+                    st.write(f"**Description:** {doc['description'] if doc['description'] else 'No description'}")
+                    st.write(f"**Upload Date:** {doc['upload_date'].split('T')[0]}")
+                with col2:
+                    st.write(f"**Size:** {doc['size'] / 1024:.2f} KB")
+                    if doc['content']:
+                        if st.button("View Content", key=f"view_{doc['id']}"):
+                            st.session_state.canvas_text = doc['content']
+                            st.session_state.current_view = "AI Assistant"
+                            st.rerun()
+                
+                # Delete document
+                if st.button("Delete Document", key=f"delete_{doc['id']}"):
+                    st.session_state.documents.remove(doc)
+                    st.success(f"Document '{doc['name']}' deleted successfully!")
+                    st.rerun()
 
 def display_ai_assistant():
     """Display the AI Assistant view for project management assistance"""
@@ -349,68 +365,6 @@ def display_ai_assistant():
         
         if ai_system_prompt != st.session_state.ai_system_prompt:
             st.session_state.ai_system_prompt = ai_system_prompt
-    
-    # Project context selector
-    st.subheader("Project Context")
-    if st.session_state.projects:
-        project_names = ["None"] + [p["name"] for p in st.session_state.projects]
-        selected_project = st.selectbox(
-            "Select a project for context",
-            options=project_names,
-            index=0
-        )
-        
-        if selected_project != "None":
-            # Find selected project
-            project = next((p for p in st.session_state.projects if p["name"] == selected_project), None)
-            if project:
-                st.session_state.current_project = project
-                
-                # Display project info
-                st.write(f"**Project:** {project['name']}")
-                st.write(f"**Status:** {project['status']} ({project['progress']}% complete)")
-                st.write(f"**Timeline:** {project['start_date']} to {project['end_date']}")
-                
-                # Add project context to canvas
-                if st.button("Add Project Context to Prompt"):
-                    project_context = f"""
-                    Project Name: {project['name']}
-                    Description: {project['description']}
-                    Status: {project['status']}
-                    Progress: {project['progress']}%
-                    Timeline: {project['start_date']} to {project['end_date']}
-                    """
-                    
-                    # Add milestones
-                    if project.get("milestones"):
-                        project_context += "\n\nMilestones:\n"
-                        for milestone in project["milestones"]:
-                            project_context += f"- {milestone['name']} ({milestone['date']}): {milestone['status']}\n"
-                    
-                    # Add tasks
-                    if project.get("tasks"):
-                        project_context += "\n\nTasks:\n"
-                        for task in project["tasks"]:
-                            project_context += f"- {task['name']} ({task['status']}): Assigned to {task['assignee']}\n"
-                    
-                    # Add team
-                    if project.get("team"):
-                        project_context += "\n\nTeam:\n"
-                        for member in project["team"]:
-                            project_context += f"- {member['name']} ({member['role']})\n"
-                    
-                    if "canvas_text" not in st.session_state:
-                        st.session_state.canvas_text = ""
-                    
-                    # Add context to canvas
-                    if st.session_state.canvas_text:
-                        st.session_state.canvas_text += "\n\n--- Project Context ---\n" + project_context
-                    else:
-                        st.session_state.canvas_text = "--- Project Context ---\n" + project_context
-                    
-                    st.success("Project context added to prompt!")
-    else:
-        st.info("No projects available. Create a project in the Projects tab to use project context.")
     
     # Text canvas for pasting content
     st.markdown("### Prompt Canvas")
@@ -560,17 +514,14 @@ def main():
     # Create sidebar
     create_sidebar()
     
-    # Display the appropriate view
-    if st.session_state.current_view == "Dashboard":
-        display_dashboard()
-    elif st.session_state.current_view == "Projects":
-        display_projects()
-    elif st.session_state.current_view == "Documents":
+    # Display the appropriate view (simplified - only Documents and AI Assistant)
+    if st.session_state.current_view == "Documents":
         display_documents()
     elif st.session_state.current_view == "AI Assistant":
         display_ai_assistant()
     else:
-        display_dashboard()
+        # Default to AI Assistant if view is not recognized
+        display_ai_assistant()
 
 # Run the main function
 if __name__ == "__main__":
